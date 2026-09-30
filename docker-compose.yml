@@ -1,0 +1,60 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: bazar_db
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-bazar_desapega}
+      MYSQL_USER: ${DB_USERNAME:-bazar_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-bazar_secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_secret}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - bazar_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bazar_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - storage_uploads:/var/www/html/storage/app/public
+    networks:
+      - bazar_network
+
+  web:
+    image: nginx:alpine
+    container_name: bazar_nginx
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - storage_uploads:/var/www/html/public/storage:ro
+    depends_on:
+      - api
+    networks:
+      - bazar_network
+
+volumes:
+  db_data:
+    driver: local
+  storage_uploads:
+    driver: local
+
+networks:
+  bazar_network:
+    driver: bridge
